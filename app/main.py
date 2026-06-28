@@ -1,30 +1,24 @@
 # ------- IMPORTS -------
-from fastapi import FastAPI, status, HTTPException
+from fastapi import FastAPI, status, HTTPException, Request, Depends
 from fastapi_swagger_ui_theme import setup_swagger_ui_theme
 
 from datetime import datetime
 
-from schemas import UserCreate, UserResponse, UserUpdate
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-# Temporary
-users: list[dict] = [
-    {
-        "id": 1,
-        "username": "corporal.chicken",
-        "email": "yaseen@example.com",
-        "created_at": datetime.today()
-    },
-    {
-        "id": 2,
-        "username": "chocolate_biscuit",
-        "email": "choco.biscuit@example.com",
-        "created_at": datetime.today()
-    }
-]
+from typing import Annotated
+
+from database import Base, get_database, engine
+from schemas import UserCreate, UserResponse, UserUpdate
+import models
 
 # ------- SETUP -------
 app = FastAPI(docs_url = None)
 
+Base.metadata.create_all(bind = engine)
+
+# Dark Mode
 setup_swagger_ui_theme(
     app, 
     docs_path = "/docs", 
@@ -42,17 +36,16 @@ def home():
     response_model = UserResponse,
     status_code = status.HTTP_201_CREATED
 )
-def create_user(user: UserCreate):
-    new_id = max(p["id"] for p in users) + 1 if users else 1
+def create_user(user_info: UserCreate, database: Annotated[Session, Depends(get_database)]):
+    new_user = models.User(
+        username = user_info.username,
+        email = user_info.email,
+        created_at = datetime.now()
+    )
 
-    new_user = {
-        "id": new_id,
-        "username": user.username,
-        "email": user.email,
-        "created_at": datetime.today(),
-    }
-
-    users.append(new_user)
+    database.add(new_user)
+    database.commit()
+    database.refresh(new_user)
 
     return new_user
 
@@ -60,57 +53,72 @@ def create_user(user: UserCreate):
     "/api/users/{user_id}",
     status_code = status.HTTP_204_NO_CONTENT
 )
-def delete_user(user_id: int):
-    for user in users:
-        if user.get("id") == user_id:
-            users.remove(user)
-
-    raise HTTPException(
-        status_code = status.HTTP_404_NOT_FOUND,
-        detail = f"user with ID of {user_id} not found"
+def delete_user(user_id: int, database: Annotated[Session, Depends(get_database)]):
+    result = database.execute(
+        select(models.User)
+        .where(models.User.id == user_id)
     )
+    user = result.scalars().first()
+
+    if not user:
+        raise HTTPException(
+            status_code = status.HTTP_404_NOT_FOUND,
+            detail = f"user with ID of {user_id} not found"
+        )
+    
+    database.delete(user)
+    database.commit()
 
 @app.patch(
     "/api/users/{user_id}",
     response_model = UserResponse,
     status_code = status.HTTP_200_OK
 )
-def update_user(user_id: int, updated_info: UserUpdate):
-    found_user = None
+def update_user(user_id: int, updated_info: UserUpdate, database: Annotated[Session, Depends(get_database)]):
+    result = database.execute(
+        select(models.User)
+        .where(models.User.id == user_id)
+    )
+    user = result.scalars().first()
 
-    for user in users:
-        if user.get("id") == user_id:
-            found_user = user
-            break
-
-    if found_user is None:
+    if not user:
         raise HTTPException(
             status_code = status.HTTP_404_NOT_FOUND,
             detail = f"user with ID of {user_id} not found"
         )
 
-    if updated_info.username is not None:
-        found_user["username"] = updated_info.username
-    if updated_info.email is not None:
-        found_user["email"] = updated_info.email
+    update_data = updated_info.model_dump(exclude_unset = True)
 
-    return found_user
+    for field, value in update_data.items():
+        setattr(user, field, value)
+
+    database.commit()
+    database.refresh(user)
+    
+    return user
 
 @app.get(
     "/api/users",
     response_model = list[UserResponse]
 )
-def get_all_users():
+def get_all_users(database: Annotated[Session, Depends(get_database)]):
+    result = database.execute(select(models.User))
+    users = result.scalars().all()
+
     return users
 
 @app.get(
     "/api/users/{user_id}",
     response_model = UserResponse
 )
-def get_specific_user(user_id: int):
-    for user in users:
-        if user.get("id") == user_id:
-            return user
+def get_specific_user(user_id: int, database: Annotated[Session, Depends(get_database)]):
+    result = database.execute(
+        select(models.User)
+        .where(models.User.id == user_id)
+    )
+    user = result.scalars().first()
+
+    if user: return user
     
     raise HTTPException(
         status_code = status.HTTP_404_NOT_FOUND,
