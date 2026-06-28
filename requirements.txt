@@ -9,6 +9,7 @@ email-validator==2.3.0
 fastapi==0.138.1
 fastapi-cli==0.0.27
 fastapi-cloud-cli==0.21.0
+fastapi-swagger-ui-theme==0.1.0
 fastar==0.11.0
 h11==0.16.0
 httpcore==1.0.9
