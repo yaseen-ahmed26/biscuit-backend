@@ -1,23 +1,101 @@
 from fastapi import status, HTTPException, Depends, APIRouter
+from fastapi.security import OAuth2PasswordRequestForm
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from typing import Annotated
 
-from schemas import UserCreate, UserResponse, UserUpdate
+from schemas import UserCreate, UserUpdate, UserPublic, UserPrivate, Token
 from database import get_database
 import models
+
+from auth import (
+    create_access_token, 
+    verify_access_token, 
+    hash_password, 
+    verify_password, 
+    oauth2_scheme
+)
+
+from config import settings
 
 # ------- SETUP -------
 router = APIRouter()
 
 # ------- ENDPOINTS -------
 @router.post(
+    "/token", 
+    response_model = Token
+)
+async def login(form_data: Annotated[OAuth2PasswordRequestForm, Depends()], database: Annotated[AsyncSession, Depends(get_database)]):
+    result = await database.execute(
+        select(models.User)
+        .where(models.User.email == form_data.username)
+    )
+
+    user = result.scalars().first()
+
+    if not user or not verify_password(form_data.password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail = "incorrect email or password",
+            headers = {"WWW-Authenticate": "Bearer"},
+        )
+
+    access_token_expires = timedelta(minutes = settings.access_token_expire_minutes)
+
+    access_token = create_access_token(
+        data = {"sub": str(user.id)},
+        expires_delta = access_token_expires,
+    )
+
+    return Token(access_token = access_token, token_type = "bearer")
+
+@router.get(
+    "/me", 
+    response_model = UserPrivate
+)
+async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)], database: Annotated[AsyncSession, Depends(get_database)]):
+    user_id = verify_access_token(token)
+
+    if user_id is None:
+        raise HTTPException(
+            status_code = status.HTTP_401_UNAUTHORIZED,
+            detail=  "invalid or expired token",
+            headers = {"WWW-Authenticate": "Bearer"},
+        )
+
+    try:
+        user_id_int = int(user_id)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail = "Invalid or expired token",
+            headers = {"WWW-Authenticate": "Bearer"},
+        )
+
+    result = await database.execute(
+        select(models.User)
+        .where(models.User.id == user_id_int),
+    )
+
+    user = result.scalars().first()
+
+    if not user:
+        raise HTTPException(
+            status_code = status.HTTP_401_UNAUTHORIZED,
+            detail = "user not found",
+            headers = {"WWW-Authenticate": "Bearer"},
+        )
+    
+    return user
+
+@router.post(
     "",
-    response_model = UserResponse,
+    response_model = UserPrivate,
     status_code = status.HTTP_201_CREATED
 )
 async def create_user(user_info: UserCreate, database: Annotated[AsyncSession, Depends(get_database)]):
@@ -48,6 +126,7 @@ async def create_user(user_info: UserCreate, database: Annotated[AsyncSession, D
     new_user = models.User(
         username = user_info.username,
         email = user_info.email,
+        password_hash = hash_password(user_info.password),
         created_at = datetime.now()
     )
 
@@ -79,7 +158,7 @@ async def delete_user(user_id: int, database: Annotated[AsyncSession, Depends(ge
 
 @router.patch(
     "/{user_id}",
-    response_model = UserResponse,
+    response_model = UserPrivate,
     status_code = status.HTTP_200_OK
 )
 async def update_user(user_id: int, updated_info: UserUpdate, database: Annotated[AsyncSession, Depends(get_database)]):
@@ -133,7 +212,7 @@ async def update_user(user_id: int, updated_info: UserUpdate, database: Annotate
 
 @router.get(
     "",
-    response_model = list[UserResponse]
+    response_model = list[UserPrivate]
 )
 async def get_all_users(database: Annotated[AsyncSession, Depends(get_database)]):
     result = await database.execute(select(models.User))
@@ -143,7 +222,7 @@ async def get_all_users(database: Annotated[AsyncSession, Depends(get_database)]
 
 @router.get(
     "/{user_id}",
-    response_model = UserResponse
+    response_model = UserPrivate
 )
 async def get_specific_user(user_id: int, database: Annotated[AsyncSession, Depends(get_database)]):
     result = await database.execute(

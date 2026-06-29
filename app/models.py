@@ -15,4 +15,5 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key = True, index = True)
     username: Mapped[str] = mapped_column(String(30), unique = True, nullable = False)
     email: Mapped[str] = mapped_column(String(60), unique = True, nullable = False)
+    password_hash: Mapped[str] = mapped_column(String(200), nullable = False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone = True), default = lambda: datetime.now(UTC))
