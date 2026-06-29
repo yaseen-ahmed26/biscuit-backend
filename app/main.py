@@ -2,13 +2,23 @@
 from fastapi import FastAPI
 from fastapi_swagger_ui_theme import setup_swagger_ui_theme
 
+from contextlib import asynccontextmanager
+
 from database import Base, engine
 from routes import users
 
 # ------- SETUP -------
-app = FastAPI(docs_url = None)
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # On Startup.
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
 
-Base.metadata.create_all(bind = engine)
+    yield
+
+    await engine.dispose()
+
+app = FastAPI(lifespan = lifespan, docs_url = None)
 
 app.include_router(
     users.router, 
@@ -25,5 +35,5 @@ setup_swagger_ui_theme(
 
 # ------- HOME -------
 @app.get("/", include_in_schema = False)
-def home():
+async def home():
     return {"message": "Biscuit Backend is running"}

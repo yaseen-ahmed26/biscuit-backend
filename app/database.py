@@ -1,21 +1,22 @@
 # ------- IMPORTS -------
-from sqlalchemy import create_engine
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import DeclarativeBase
 
 # ------- SETUP -------
-SQLALCHEMY_DATABASE_URL = "sqlite:///./biscuit.db"
+SQLALCHEMY_DATABASE_URL = "sqlite+aiosqlite:///./biscuit.db"
 
-engine = create_engine(
+engine = create_async_engine(
     SQLALCHEMY_DATABASE_URL,
     connect_args = {
         "check_same_thread": False
     }
 )
 
-SessionLocal = sessionmaker(
+AsyncSessionLocal = async_sessionmaker(
     autocommit = False,
     autoflush = False,
-    bind = engine
+    bind = engine,
+    class_ = AsyncSession
 )
 
 # ------- CLASSES -------
@@ -23,6 +24,6 @@ class Base(DeclarativeBase):
     pass
 
 # ------- FUNCTIONS -------
-def get_database():
-    with SessionLocal() as database:
+async def get_database():
+    async with AsyncSessionLocal() as database:
         yield database

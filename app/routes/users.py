@@ -3,7 +3,7 @@ from fastapi import status, HTTPException, Depends, APIRouter
 from datetime import datetime
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from typing import Annotated
 
@@ -20,8 +20,8 @@ router = APIRouter()
     response_model = UserResponse,
     status_code = status.HTTP_201_CREATED
 )
-def create_user(user_info: UserCreate, database: Annotated[Session, Depends(get_database)]):
-    result = database.execute(
+async def create_user(user_info: UserCreate, database: Annotated[AsyncSession, Depends(get_database)]):
+    result = await database.execute(
         select(models.User)
         .where(models.User.username == user_info.username)
     )
@@ -33,7 +33,7 @@ def create_user(user_info: UserCreate, database: Annotated[Session, Depends(get_
             detail = f"username '{user_info.username}' already exists"
         )
     
-    result = database.execute(
+    result = await database.execute(
         select(models.User)
         .where(models.User.email == user_info.email)
     )
@@ -52,8 +52,8 @@ def create_user(user_info: UserCreate, database: Annotated[Session, Depends(get_
     )
 
     database.add(new_user)
-    database.commit()
-    database.refresh(new_user)
+    await database.commit()
+    await database.refresh(new_user)
 
     return new_user
 
@@ -61,8 +61,8 @@ def create_user(user_info: UserCreate, database: Annotated[Session, Depends(get_
     "/{user_id}",
     status_code = status.HTTP_204_NO_CONTENT
 )
-def delete_user(user_id: int, database: Annotated[Session, Depends(get_database)]):
-    result = database.execute(
+async def delete_user(user_id: int, database: Annotated[AsyncSession, Depends(get_database)]):
+    result = await database.execute(
         select(models.User)
         .where(models.User.id == user_id)
     )
@@ -74,16 +74,16 @@ def delete_user(user_id: int, database: Annotated[Session, Depends(get_database)
             detail = f"user with ID of {user_id} not found"
         )
     
-    database.delete(user)
-    database.commit()
+    await database.delete(user)
+    await database.commit()
 
 @router.patch(
     "/{user_id}",
     response_model = UserResponse,
     status_code = status.HTTP_200_OK
 )
-def update_user(user_id: int, updated_info: UserUpdate, database: Annotated[Session, Depends(get_database)]):
-    result = database.execute(
+async def update_user(user_id: int, updated_info: UserUpdate, database: Annotated[AsyncSession, Depends(get_database)]):
+    result = await database.execute(
         select(models.User)
         .where(models.User.id == user_id)
     )
@@ -96,7 +96,7 @@ def update_user(user_id: int, updated_info: UserUpdate, database: Annotated[Sess
         )
     
     if updated_info.username is not None:
-        result = database.execute(
+        result = await database.execute(
             select(models.User)
             .where(models.User.username == updated_info.username)
         )
@@ -109,7 +109,7 @@ def update_user(user_id: int, updated_info: UserUpdate, database: Annotated[Sess
             )
     
     if updated_info.email is not None:
-        result = database.execute(
+        result = await database.execute(
             select(models.User)
             .where(models.User.email == updated_info.email)
         )
@@ -126,8 +126,8 @@ def update_user(user_id: int, updated_info: UserUpdate, database: Annotated[Sess
     for field, value in update_data.items():
         setattr(user, field, value)
 
-    database.commit()
-    database.refresh(user)
+    await database.commit()
+    await database.refresh(user)
     
     return user
 
@@ -135,8 +135,8 @@ def update_user(user_id: int, updated_info: UserUpdate, database: Annotated[Sess
     "",
     response_model = list[UserResponse]
 )
-def get_all_users(database: Annotated[Session, Depends(get_database)]):
-    result = database.execute(select(models.User))
+async def get_all_users(database: Annotated[AsyncSession, Depends(get_database)]):
+    result = await database.execute(select(models.User))
     users = result.scalars().all()
 
     return users
@@ -145,8 +145,8 @@ def get_all_users(database: Annotated[Session, Depends(get_database)]):
     "/{user_id}",
     response_model = UserResponse
 )
-def get_specific_user(user_id: int, database: Annotated[Session, Depends(get_database)]):
-    result = database.execute(
+async def get_specific_user(user_id: int, database: Annotated[AsyncSession, Depends(get_database)]):
+    result = await database.execute(
         select(models.User)
         .where(models.User.id == user_id)
     )
