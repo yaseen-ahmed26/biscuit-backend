@@ -123,7 +123,7 @@ async def delete_user(user_id: int, current_user: CurrentUser, database: Annotat
     if not user:
         raise HTTPException(
             status_code = status.HTTP_404_NOT_FOUND,
-            detail = f"user with ID of {user_id} not found"
+            detail = f"user with ID '{user_id}' not found"
         )
     
     await database.delete(user)
@@ -155,10 +155,10 @@ async def update_user(
     if not user:
         raise HTTPException(
             status_code = status.HTTP_404_NOT_FOUND,
-            detail = f"user with ID of {user_id} not found"
+            detail = f"user with ID '{user_id}' not found"
         )
     
-    if updated_info.username is not None:
+    if updated_info.username is not None and updated_info.username != user.username:
         result = await database.execute(
             select(models.User)
             .where(models.User.username == updated_info.username)
@@ -171,7 +171,7 @@ async def update_user(
                 detail = f"username '{updated_info.username}' already exists"
             )
     
-    if updated_info.email is not None:
+    if updated_info.email is not None and updated_info.email != user.email:
         result = await database.execute(
             select(models.User)
             .where(models.User.email == updated_info.email)
@@ -219,5 +219,5 @@ async def get_specific_user(user_id: int, database: Annotated[AsyncSession, Depe
     
     raise HTTPException(
         status_code = status.HTTP_404_NOT_FOUND,
-        detail = f"user with ID of {user_id} not found"
+        detail = f"user with ID '{user_id}' not found"
     )
